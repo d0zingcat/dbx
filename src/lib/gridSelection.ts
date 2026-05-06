@@ -1,4 +1,6 @@
-export type GridCellValue = string | number | boolean | null;
+import { formatGridCellDisplay, type GridCellValue } from "./gridCell.ts";
+
+export type { GridCellValue };
 
 export interface CellPosition {
   rowIndex: number;
@@ -49,9 +51,7 @@ export function extractSelection(
 }
 
 function displayValue(value: GridCellValue): string {
-  if (value === null) return "NULL";
-  if (typeof value === "boolean") return value ? "true" : "false";
-  return String(value);
+  return formatGridCellDisplay(value);
 }
 
 function csvValue(value: GridCellValue | string): string {
@@ -63,7 +63,7 @@ function sqlValue(value: GridCellValue): string {
   if (value === null) return "NULL";
   if (typeof value === "boolean") return value ? "TRUE" : "FALSE";
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
-  return `'${String(value).replace(/'/g, "''")}'`;
+  return `'${displayValue(value).replace(/'/g, "''")}'`;
 }
 
 export function formatSelectionAsTsv(selection: SelectionData): string {

@@ -11,10 +11,7 @@ import {
 } from "../src/lib/gridSelection.ts";
 
 test("normalizes a dragged cell range in either direction", () => {
-  const range = normalizeSelectionRange(
-    { rowIndex: 4, colIndex: 3 },
-    { rowIndex: 1, colIndex: 0 },
-  );
+  const range = normalizeSelectionRange({ rowIndex: 4, colIndex: 3 }, { rowIndex: 1, colIndex: 0 });
 
   assert.deepEqual(range, {
     startRow: 1,
@@ -49,20 +46,41 @@ test("formats selected cells as TSV, CSV, JSON, and SQL values", () => {
     columns: ["name", "note"],
     rows: [
       ["Ada", "math"],
-      ["Bob", "quote \"here\""],
+      ["Bob", 'quote "here"'],
       ["O'Hara", null],
     ],
   };
 
-  assert.equal(formatSelectionAsTsv(selection), "name\tnote\nAda\tmath\nBob\tquote \"here\"\nO'Hara\tNULL");
-  assert.equal(formatSelectionAsCsv(selection), "\"name\",\"note\"\n\"Ada\",\"math\"\n\"Bob\",\"quote \"\"here\"\"\"\n\"O'Hara\",\"NULL\"");
+  assert.equal(formatSelectionAsTsv(selection), 'name\tnote\nAda\tmath\nBob\tquote "here"\nO\'Hara\tNULL');
+  assert.equal(
+    formatSelectionAsCsv(selection),
+    '"name","note"\n"Ada","math"\n"Bob","quote ""here"""\n"O\'Hara","NULL"',
+  );
   assert.equal(
     formatSelectionAsJson(selection),
-    JSON.stringify([
-      { name: "Ada", note: "math" },
-      { name: "Bob", note: "quote \"here\"" },
-      { name: "O'Hara", note: null },
-    ], null, 2),
+    JSON.stringify(
+      [
+        { name: "Ada", note: "math" },
+        { name: "Bob", note: 'quote "here"' },
+        { name: "O'Hara", note: null },
+      ],
+      null,
+      2,
+    ),
   );
   assert.equal(formatSelectionAsSqlInList(selection), "('Ada', 'math', 'Bob', 'quote \"here\"', 'O''Hara', NULL)");
+});
+
+test("formats object cells as JSON text for selection exports", () => {
+  const selection = {
+    columns: ["id", "source_config"],
+    rows: [[1, { region: "cn", enabled: true }]],
+  };
+
+  assert.equal(formatSelectionAsTsv(selection as any), 'id\tsource_config\n1\t{"region":"cn","enabled":true}');
+  assert.equal(
+    formatSelectionAsCsv(selection as any),
+    '"id","source_config"\n"1","{""region"":""cn"",""enabled"":true}"',
+  );
+  assert.equal(formatSelectionAsSqlInList(selection as any), '(1, \'{"region":"cn","enabled":true}\')');
 });

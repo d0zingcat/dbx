@@ -1,4 +1,4 @@
-import type { GridCellValue } from "./dataGridSql.ts";
+import { formatGridCellDisplay, type GridCellValue } from "./gridCell.ts";
 
 export interface MarkdownTableData {
   columns: string[];
@@ -20,9 +20,7 @@ export function formatMarkdownTable(data: MarkdownTableData): string {
 }
 
 function displayCell(value: GridCellValue): string {
-  if (value === null) return "NULL";
-  if (typeof value === "boolean") return value ? "true" : "false";
-  return String(value);
+  return formatGridCellDisplay(value);
 }
 
 function markdownCell(value: string): string {

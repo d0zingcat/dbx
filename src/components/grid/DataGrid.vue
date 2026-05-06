@@ -60,7 +60,8 @@ import {
   type CellSelectionRange,
 } from "@/lib/gridSelection";
 import { buildTableSelectSql, normalizeWhereInput, quoteTableIdentifier } from "@/lib/tableSelectSql";
-import { buildDataGridSaveStatements, formatGridSqlLiteral } from "@/lib/dataGridSql";
+import { buildDataGridSaveStatements, formatGridSqlLiteral, type GridCellValue } from "@/lib/dataGridSql";
+import { formatGridCellDisplay, formatGridCellJsonPreview } from "@/lib/gridCell";
 import { formatMarkdownTable } from "@/lib/markdownTable";
 import {
   matchesRowStatusFilter,
@@ -442,7 +443,7 @@ function changePageSize(size: number) {
 }
 
 // --- Editing ---
-type CellValue = string | number | boolean | null;
+type CellValue = GridCellValue;
 const editingCell = ref<{ rowId: number; col: number } | null>(null);
 const editValue = ref("");
 const scrollerRef = ref<HTMLElement | { $el?: HTMLElement; el?: HTMLElement | { value?: HTMLElement } } | null>(null);
@@ -462,7 +463,7 @@ const sortedRows = computed(() => {
     const q = clientSearchText.value.toLowerCase();
     rows = rows.filter(({ row, sourceIndex }) => {
       const data = rowDataWithChanges(row, sourceIndex);
-      return data.some((cell) => cell !== null && String(cell).toLowerCase().includes(q));
+      return data.some((cell) => cell !== null && formatCell(cell).toLowerCase().includes(q));
     });
   }
   return rows;
@@ -494,7 +495,7 @@ const displayItems = computed<RowItem[]>(() => {
     const status: RowStatus = isDeleted ? "deleted" : dirty ? "edited" : "clean";
     return { id: sourceIndex, sourceIndex, data, isNew: false, isDeleted, isDirtyCol, status };
   });
-  newRows.value.forEach((row, i) => {
+  newRows.value.forEach((row: CellValue[], i: number) => {
     items.push({
       id: -(i + 1),
       newIndex: i,
@@ -534,17 +535,7 @@ const activeCellDetail = computed(() => {
   if (!item || !column) return null;
   const value = item.data[cell.col] ?? null;
   const rawValue = formatCell(value);
-  const valueText = value === null ? "" : String(value);
-  const trimmed = valueText.trim();
-  const maybeJson = typeof value === "string" && (trimmed.startsWith("{") || trimmed.startsWith("["));
-  let formattedJson = "";
-  if (maybeJson) {
-    try {
-      formattedJson = JSON.stringify(JSON.parse(value), null, 2);
-    } catch {
-      formattedJson = "";
-    }
-  }
+  const formattedJson = formatGridCellJsonPreview(value);
   return {
     rowNumber: cell.rowIndex + 1,
     colIndex: cell.col,
@@ -553,7 +544,7 @@ const activeCellDetail = computed(() => {
     comment: columnCommentMap.value.get(column) || "",
     value,
     rawValue,
-    length: value === null ? 0 : String(value).length,
+    length: value === null ? 0 : rawValue.length,
     formattedJson,
   };
 });
@@ -606,10 +597,7 @@ async function applyWhereSearch() {
 }
 
 function formatCell(value: CellValue): string {
-  if (value === null) return "NULL";
-  if (typeof value === "boolean") return value ? "true" : "false";
-  if (typeof value === "object") return JSON.stringify(value);
-  return String(value);
+  return formatGridCellDisplay(value);
 }
 
 function quoteIdent(name: string): string {
@@ -713,7 +701,7 @@ function startEdit(rowId: number, colIdx: number) {
   isCancelling = false;
   editingCell.value = { rowId, col: colIdx };
   const val = item?.data[colIdx] ?? null;
-  editValue.value = val === null ? "" : String(val);
+  editValue.value = val === null ? "" : formatGridCellDisplay(val, "");
   nextTick(() => {
     const input = document.querySelector(".cell-edit-input") as HTMLInputElement;
     input?.focus();

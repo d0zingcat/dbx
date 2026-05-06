@@ -1,7 +1,8 @@
 import type { DatabaseType } from "@/types/database";
+import { formatGridCellDisplay, type GridCellValue } from "./gridCell.ts";
 import { qualifiedTableName, quoteTableIdentifier } from "./tableSelectSql.ts";
 
-export type GridCellValue = string | number | boolean | null;
+export type { GridCellValue };
 
 export interface DataGridTableMeta {
   schema?: string;
@@ -60,7 +61,7 @@ export function formatGridSqlLiteral(value: GridCellValue): string {
   if (value === null || value === undefined) return "NULL";
   if (typeof value === "boolean") return value ? "TRUE" : "FALSE";
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
-  const text = String(value);
+  const text = formatGridCellDisplay(value);
   if (text === "") return "''";
   return `'${text.replace(/\\/g, "\\\\").replace(/'/g, "''")}'`;
 }

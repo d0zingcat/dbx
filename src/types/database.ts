@@ -87,7 +87,7 @@ export interface TriggerInfo {
 
 export interface QueryResult {
   columns: string[];
-  rows: (string | number | boolean | null)[][];
+  rows: import("@/lib/gridCell").GridCellValue[][];
   affected_rows: number;
   execution_time_ms: number;
   truncated?: boolean;
