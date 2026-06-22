@@ -1444,6 +1444,18 @@ fn max_transfer_write_rows(db_type: &DatabaseType, mode: &TransferMode) -> usize
     }
 }
 
+fn can_reuse_source_table_ddl(
+    source_db_type: &DatabaseType,
+    target_db_type: &DatabaseType,
+    preserves_target_table_name: bool,
+) -> bool {
+    preserves_target_table_name
+        && !matches!(target_db_type, DatabaseType::ClickHouse)
+        && ((source_db_type == target_db_type)
+            || (is_mysql_family_target(source_db_type) && is_mysql_family_target(target_db_type))
+            || (is_postgres_family_target(source_db_type) && is_postgres_family_target(target_db_type)))
+}
+
 #[allow(clippy::too_many_arguments)]
 fn generate_transfer_write_sql(
     mode: &TransferMode,
@@ -2977,10 +2989,8 @@ where
                 .await
                 .map_err(|e| format!("Failed to ensure schema exists: {e}"))?;
         }
-        let can_reuse_source_ddl = preserves_target_table_name
-            && ((source_db_type == target_db_type)
-                || (is_mysql_family_target(source_db_type) && is_mysql_family_target(target_db_type))
-                || (is_postgres_family_target(source_db_type) && is_postgres_family_target(target_db_type)));
+        let can_reuse_source_ddl =
+            can_reuse_source_table_ddl(source_db_type, target_db_type, preserves_target_table_name);
         let ddl = if can_reuse_source_ddl {
             crate::schema::get_table_ddl_core(
                 &state,
@@ -3846,6 +3856,13 @@ mod tests {
 
         assert!(ddl.contains("ENGINE = MergeTree() ORDER BY tuple()"));
         assert!(!ddl.contains("PRIMARY KEY"));
+    }
+
+    #[test]
+    fn clickhouse_transfer_does_not_reuse_source_table_ddl() {
+        assert!(!can_reuse_source_table_ddl(&DatabaseType::ClickHouse, &DatabaseType::ClickHouse, true));
+        assert!(can_reuse_source_table_ddl(&DatabaseType::Postgres, &DatabaseType::Postgres, true));
+        assert!(!can_reuse_source_table_ddl(&DatabaseType::Postgres, &DatabaseType::Postgres, false));
     }
 
     #[test]
