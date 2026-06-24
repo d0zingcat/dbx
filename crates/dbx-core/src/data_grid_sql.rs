@@ -329,6 +329,7 @@ pub fn build_data_grid_copy_insert_statement(options: DataGridCopyInsertStatemen
 
 pub fn build_data_grid_context_filter_condition(options: DataGridContextFilterConditionOptions) -> Option<String> {
     let column = column_filter_ref(options.database_type, &options.column_name);
+    let like_column = column_like_filter_ref(options.database_type, &options.column_name, options.column_info.as_ref());
     let value = &options.value;
     match options.mode {
         DataGridContextFilterMode::IsNull => Some(format!("{column} IS NULL")),
@@ -336,7 +337,7 @@ pub fn build_data_grid_context_filter_condition(options: DataGridContextFilterCo
         DataGridContextFilterMode::Equals if value.is_null() => Some(format!("{column} IS NULL")),
         DataGridContextFilterMode::NotEquals if value.is_null() => Some(format!("{column} IS NOT NULL")),
         DataGridContextFilterMode::Like => Some(format!(
-            "{column} LIKE {}",
+            "{like_column} LIKE {}",
             format_grid_sql_literal(
                 &Value::String(format!("%{}%", value_to_filter_text(value))),
                 options.database_type,
@@ -344,7 +345,7 @@ pub fn build_data_grid_context_filter_condition(options: DataGridContextFilterCo
             )
         )),
         DataGridContextFilterMode::NotLike => Some(format!(
-            "{column} NOT LIKE {}",
+            "{like_column} NOT LIKE {}",
             format_grid_sql_literal(
                 &Value::String(format!("%{}%", value_to_filter_text(value))),
                 options.database_type,
@@ -1407,6 +1408,37 @@ fn column_filter_ref(database_type: Option<DatabaseType>, column_name: &str) -> 
     }
 }
 
+fn column_like_filter_ref(
+    database_type: Option<DatabaseType>,
+    column_name: &str,
+    column_info: Option<&DataGridColumnInfo>,
+) -> String {
+    let column = column_filter_ref(database_type, column_name);
+    if is_postgres_like_pattern_database(database_type)
+        && column_info.map(|column_info| !is_textual_column_type(&column_info.data_type)).unwrap_or(true)
+    {
+        format!("{column}::text")
+    } else {
+        column
+    }
+}
+
+fn is_postgres_like_pattern_database(database_type: Option<DatabaseType>) -> bool {
+    matches!(
+        database_type,
+        Some(
+            DatabaseType::Postgres
+                | DatabaseType::Redshift
+                | DatabaseType::Gaussdb
+                | DatabaseType::Kwdb
+                | DatabaseType::Kingbase
+                | DatabaseType::Highgo
+                | DatabaseType::Vastbase
+                | DatabaseType::OpenGauss
+        )
+    )
+}
+
 fn value_to_filter_text(value: &Value) -> String {
     if let Some(value) = value.as_str() {
         value.to_string()
@@ -1644,6 +1676,28 @@ mod tests {
             })
             .as_deref(),
             Some("\"status\" LIKE '%active%'")
+        );
+        assert_eq!(
+            build_data_grid_context_filter_condition(DataGridContextFilterConditionOptions {
+                database_type: Some(DatabaseType::Postgres),
+                column_name: "update_date".to_string(),
+                mode: DataGridContextFilterMode::Like,
+                value: json!("128"),
+                column_info: Some(column("update_date", "bigint", false, None)),
+            })
+            .as_deref(),
+            Some("\"update_date\"::text LIKE '%128%'")
+        );
+        assert_eq!(
+            build_data_grid_context_filter_condition(DataGridContextFilterConditionOptions {
+                database_type: Some(DatabaseType::Postgres),
+                column_name: "created_at".to_string(),
+                mode: DataGridContextFilterMode::NotLike,
+                value: json!("2026"),
+                column_info: Some(column("created_at", "timestamp without time zone", false, None)),
+            })
+            .as_deref(),
+            Some("\"created_at\"::text NOT LIKE '%2026%'")
         );
     }
 
