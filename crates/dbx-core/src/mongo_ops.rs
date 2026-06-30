@@ -187,7 +187,19 @@ pub async fn mongo_update_documents_core(
         PoolKind::MongoDb(client) => {
             mongo_driver::update_documents(client, database, collection, filter_json, update_json, many).await
         }
-        PoolKind::Agent(_) => Err("MongoDB legacy agent does not support bulk updateOne/updateMany writes".to_string()),
+        PoolKind::Agent(client) => {
+            let mut client = client.lock().await;
+            let result: serde_json::Value = client
+                .mongo_update_documents(serde_json::json!({
+                    "database": database,
+                    "collection": collection,
+                    "filter_json": filter_json,
+                    "update_json": update_json,
+                    "many": many,
+                }))
+                .await?;
+            Ok(result.get("modified_count").and_then(|v| v.as_u64()).unwrap_or(0))
+        }
         _ => Err("Not a MongoDB connection".to_string()),
     }
 }
