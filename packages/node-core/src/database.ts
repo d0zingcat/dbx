@@ -1,4 +1,5 @@
 import type { ConnectionConfig, ProxyTunnelConfig } from "./connections.js";
+import type { SslOptions } from "mysql2";
 import { createServer, connect as netConnect, type Server, type Socket } from "node:net";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -450,12 +451,17 @@ function mysqlUrlParamsTlsDisabled(params: string): boolean {
 }
 
 function mysqlUsesTls(config: ConnectionConfig): boolean {
-  if (mysqlUrlParamsTlsDisabled(config.url_params || "")) return false;
   return !!config.ssl || mysqlUrlParamsRequireTls(config.url_params || "");
 }
 
 function bareMysqlUsesTls(config: ConnectionConfig): boolean {
-  return isStarrocksConnection(config) && mysqlUsesTls(config);
+  if (!isStarrocksConnection(config)) {
+    return false;
+  }
+  if (mysqlUrlParamsTlsDisabled(config.url_params || "")) {
+    return false;
+  }
+  return mysqlUsesTls(config);
 }
 
 function normalizeBareMysqlUrlParams(value: string): string {
@@ -528,11 +534,11 @@ function buildMysqlUrlParams(config: ConnectionConfig): string {
   return raw;
 }
 
-async function mysqlTlsOptions(config: ConnectionConfig): Promise<import("mysql2").SslOptions | undefined> {
+async function mysqlTlsOptions(config: ConnectionConfig): Promise<SslOptions | undefined> {
   if (!bareMysqlUsesTls(config)) return undefined;
 
   const params = urlParams(config);
-  const tls: import("mysql2").SslOptions = {};
+  const tls: SslOptions = {};
   const verifyCa = (params.get("verify_ca") || "").toLowerCase() === "true";
   const verifyIdentity = (params.get("verify_identity") || "").toLowerCase() === "true";
   if (!verifyCa && !verifyIdentity) {
