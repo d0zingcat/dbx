@@ -502,8 +502,17 @@ pub async fn test_connection(state: State<'_, Arc<AppState>>, config: Connection
     let result = match probe_result {
         Err(e) => Err(e),
         Ok(()) => match config.db_type {
-            DatabaseType::Mysql if config.needs_bare_mysql() => {
+            DatabaseType::Mysql if config.needs_bare_mysql() && !config.bare_mysql_uses_tls() => {
                 match db::mysql::connect_bare(&url, connect_timeout).await {
+                    Ok(pool) => {
+                        let _ = pool.disconnect().await;
+                        Ok("Connection successful".to_string())
+                    }
+                    Err(e) => Err(e),
+                }
+            }
+            DatabaseType::Mysql if config.needs_bare_mysql() && config.bare_mysql_uses_tls() => {
+                match db::mysql::connect_with_ca_cert(&url, Some(&config.ca_cert_path), connect_timeout).await {
                     Ok(pool) => {
                         let _ = pool.disconnect().await;
                         Ok("Connection successful".to_string())
@@ -520,8 +529,22 @@ pub async fn test_connection(state: State<'_, Arc<AppState>>, config: Connection
                     Err(e) => Err(e),
                 }
             }
-            DatabaseType::Doris | DatabaseType::StarRocks | DatabaseType::ManticoreSearch => {
+            DatabaseType::Doris | DatabaseType::ManticoreSearch => {
                 match db::mysql::connect_bare(&url, connect_timeout).await {
+                    Ok(pool) => {
+                        let _ = pool.disconnect().await;
+                        Ok("Connection successful".to_string())
+                    }
+                    Err(e) => Err(e),
+                }
+            }
+            DatabaseType::StarRocks => {
+                let connect = if config.bare_mysql_uses_tls() {
+                    db::mysql::connect_with_ca_cert(&url, Some(&config.ca_cert_path), connect_timeout).await
+                } else {
+                    db::mysql::connect_bare(&url, connect_timeout).await
+                };
+                match connect {
                     Ok(pool) => {
                         let _ = pool.disconnect().await;
                         Ok("Connection successful".to_string())

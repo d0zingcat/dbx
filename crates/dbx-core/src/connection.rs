@@ -250,7 +250,8 @@ pub async fn connect_mysql_metadata_pool(
     let idle_timeout_secs = Some(db_config.idle_timeout_secs);
     let extra_setup_queries = oceanbase_mysql_setup_queries(db_config);
     if db_config.needs_bare_mysql() {
-        return match db::mysql::connect_bare_with_pool_limit_and_setup(
+        return match connect_bare_mysql_pool_with_setup(
+            db_config,
             &url,
             connect_timeout,
             max_connections,
@@ -265,7 +266,8 @@ pub async fn connect_mysql_metadata_pool(
                     log::info!(
                         "MySQL metadata connection without a default database failed ({err}); retrying with configured default database."
                     );
-                    db::mysql::connect_bare_with_pool_limit_and_setup(
+                    connect_bare_mysql_pool_with_setup(
+                        db_config,
                         &fallback_url,
                         connect_timeout,
                         max_connections,
@@ -328,7 +330,8 @@ pub async fn connect_bare_metadata_pool(
     let url = connection_url_for_endpoint(db_config, host, port);
     let extra_setup_queries = oceanbase_mysql_setup_queries(db_config);
     if db_config.effective_database().is_none() {
-        return db::mysql::connect_bare_with_pool_limit_and_setup(
+        return connect_bare_mysql_pool_with_setup(
+            db_config,
             &url,
             connect_timeout,
             max_connections,
@@ -341,7 +344,8 @@ pub async fn connect_bare_metadata_pool(
     unscoped_config.database = None;
     let unscoped_url = connection_url_for_endpoint(&unscoped_config, host, port);
     if unscoped_url == url {
-        return db::mysql::connect_bare_with_pool_limit_and_setup(
+        return connect_bare_mysql_pool_with_setup(
+            db_config,
             &url,
             connect_timeout,
             max_connections,
@@ -351,8 +355,9 @@ pub async fn connect_bare_metadata_pool(
     }
 
     let preferred =
-        db::mysql::connect_bare_with_pool_limit_and_setup(&url, connect_timeout, max_connections, &extra_setup_queries);
-    let unscoped = db::mysql::connect_bare_with_pool_limit_and_setup(
+        connect_bare_mysql_pool_with_setup(db_config, &url, connect_timeout, max_connections, &extra_setup_queries);
+    let unscoped = connect_bare_mysql_pool_with_setup(
+        db_config,
         &unscoped_url,
         connect_timeout,
         max_connections,
@@ -380,6 +385,30 @@ pub async fn connect_bare_metadata_pool(
                 )),
             },
         },
+    }
+}
+
+async fn connect_bare_mysql_pool_with_setup(
+    db_config: &ConnectionConfig,
+    url: &str,
+    connect_timeout: std::time::Duration,
+    max_connections: usize,
+    extra_setup_queries: &[String],
+) -> Result<db::mysql::MySqlPool, String> {
+    if db_config.bare_mysql_uses_tls() {
+        let idle_timeout_secs = Some(db_config.idle_timeout_secs);
+        db::mysql::connect_with_ca_cert_pool_limit_idle_and_setup(
+            url,
+            Some(&db_config.ca_cert_path),
+            connect_timeout,
+            max_connections,
+            idle_timeout_secs,
+            extra_setup_queries,
+        )
+        .await
+    } else {
+        db::mysql::connect_bare_with_pool_limit_and_setup(url, connect_timeout, max_connections, extra_setup_queries)
+            .await
     }
 }
 
@@ -751,7 +780,14 @@ impl AppState {
                     connect_bare_metadata_pool(&db_config, &host, port, connect_timeout, mysql_pool_max_connections)
                         .await?
                 } else {
-                    db::mysql::connect_bare_with_pool_limit(&url, connect_timeout, mysql_pool_max_connections).await?
+                    connect_bare_mysql_pool_with_setup(
+                        &db_config,
+                        &url,
+                        connect_timeout,
+                        mysql_pool_max_connections,
+                        &oceanbase_mysql_setup_queries(&db_config),
+                    )
+                    .await?
                 };
                 PoolKind::Mysql(pool, MysqlMode::Bare)
             }
