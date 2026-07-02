@@ -1114,12 +1114,13 @@ impl ConnectionConfig {
     }
 
     pub fn mysql_uses_tls(&self) -> bool {
+        if self.host.to_ascii_lowercase().ends_with(".tidbcloud.com") {
+            return true;
+        }
         if mysql_url_params_tls_disabled(self.url_params.as_deref()) {
             return false;
         }
-        self.ssl
-            || self.host.to_ascii_lowercase().ends_with(".tidbcloud.com")
-            || mysql_url_params_require_tls(self.url_params.as_deref())
+        self.ssl || mysql_url_params_require_tls(self.url_params.as_deref())
     }
 
     fn redis_tls_insecure_fragment(&self) -> &'static str {

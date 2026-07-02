@@ -528,11 +528,11 @@ function buildMysqlUrlParams(config: ConnectionConfig): string {
   return raw;
 }
 
-async function mysqlTlsOptions(config: ConnectionConfig): Promise<import("node:tls").ConnectionOptions | undefined> {
+async function mysqlTlsOptions(config: ConnectionConfig): Promise<import("mysql2").SslOptions | undefined> {
   if (!bareMysqlUsesTls(config)) return undefined;
 
   const params = urlParams(config);
-  const tls: import("node:tls").ConnectionOptions = {};
+  const tls: import("mysql2").SslOptions = {};
   const verifyCa = (params.get("verify_ca") || "").toLowerCase() === "true";
   const verifyIdentity = (params.get("verify_identity") || "").toLowerCase() === "true";
   if (!verifyCa && !verifyIdentity) {
