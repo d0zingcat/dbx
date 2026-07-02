@@ -43,6 +43,7 @@ import { canSaveVisibleDatabaseSelection, connectionUsesVisibleSchemaFilter, fil
 import { isSchemaAware } from "@/lib/databaseFeatureSupport";
 import VisibleSchemasDialog from "@/components/sidebar/VisibleSchemasDialog.vue";
 import { oceanbaseModeConnectionPatch, oceanbaseSubModeFromConfig } from "@/lib/oceanbaseConnectionMode";
+import { sanitizeConnectionCaCertPath, supportsConnectionTlsTab, supportsMysqlTlsOptions as connectionSupportsMysqlTlsOptions } from "@/lib/connectionTlsSupport";
 import { translateBackendError } from "@/i18n/backend-errors";
 
 type DbOption = { value: string; label: string };
@@ -1587,12 +1588,10 @@ const sqliteExtensionPaths = computed({
     form.value.url_params = setSqliteExtensionPaths(form.value.url_params, value);
   },
 });
-const tlsCapableDatabaseTypes = new Set<DatabaseType>(["mysql", "starrocks", "postgres", "redshift", "gaussdb", "kwdb", "opengauss", "questdb", "redis", "etcd", "clickhouse", "elasticsearch", "qdrant", "milvus", "weaviate", "chromadb", "influxdb"]);
-const supportsTlsToggle = computed(() => tlsCapableDatabaseTypes.has(form.value.db_type));
+const supportsTlsToggle = computed(() => supportsConnectionTlsTab(form.value.db_type));
 const supportsCaCertificatePath = computed(() => form.value.db_type === "clickhouse");
 const supportsGenericUrlParams = computed(() => form.value.db_type !== "manticoresearch");
-const bareMysqlProfiles = new Set(["doris", "selectdb", "oceanbase"]);
-const supportsMysqlTlsOptions = computed(() => form.value.db_type === "starrocks" || (form.value.db_type === "mysql" && !bareMysqlProfiles.has(selectedType.value)));
+const supportsMysqlTlsOptions = computed(() => connectionSupportsMysqlTlsOptions(form.value.db_type, selectedType.value));
 const mysqlTlsMode = computed({
   get: () => mysqlTlsModeFromParams(form.value.url_params, form.value.ssl),
   set: (value: string) => {
@@ -2132,11 +2131,7 @@ function connectionConfigForSubmit(id: string): ConnectionConfig {
     config.client_cert_path = undefined;
     config.client_key_path = undefined;
   }
-  if (config.db_type !== "mysql" && config.db_type !== "clickhouse" && config.db_type !== "etcd" && config.db_type !== "starrocks") {
-    config.ca_cert_path = undefined;
-  } else {
-    config.ca_cert_path = config.ca_cert_path?.trim() || "";
-  }
+  Object.assign(config, sanitizeConnectionCaCertPath(config));
   if (jdbcBackedDatabaseTypes.has(config.db_type)) {
     if (config.db_type === "jdbc") {
       if (config.driver_profile === "dremio") {
